@@ -88,6 +88,10 @@ struct Opt {
     #[structopt(parse(from_os_str))]
     tiles_directory: PathBuf,
 
+    /// Where to save the finished mosaic
+    #[structopt(short, long, parse(from_os_str), default_value = "mosaic.png")]
+    output: PathBuf,
+
     /// The side length that the image to turn into to a mosaic will be resized to
     #[structopt(short, long, default_value = "128")]
     mosaic_size: u32,
@@ -103,6 +107,7 @@ fn main() -> Result<()> {
         tiles_directory,
         mosaic_size,
         keep_aspect_ratio,
+        output,
     } = Opt::from_args();
 
     let possible_tiles = load_images(tiles_directory)?;
@@ -114,25 +119,26 @@ fn main() -> Result<()> {
     };
 
     // For every unique pixel in the image, find its most appropiate tile
-    let unique_pixels = image.pixels().collect::<HashSet<_>>();
+    let unique_pixels = image
+        .pixels()
+        .map(|(_x, _y, pixel)| pixel)
+        .collect::<HashSet<_>>();
     let pbar = make_pbar("pixels", unique_pixels.len() as _);
     let tiles = unique_pixels
         .into_par_iter()
         .progress_with(pbar)
-        .filter_map(|(x, y, pixel)| {
-            let pixel = pick_image_for_pixel(pixel, &possible_tiles)?;
-            Some(((x, y), pixel))
+        .filter_map(|pixel| {
+            let tile = pick_image_for_pixel(pixel, &possible_tiles)?;
+            Some((pixel, tile))
         })
         .collect::<HashMap<_, _>>();
 
     // Apply the mapping previously calculated and save the mosaic
     let mut mosaic = DynamicImage::new_rgba8(image.width() * TILE_SIDE, image.height() * TILE_SIDE);
-    for y in 0..image.height() {
-        for x in 0..image.width() {
-            mosaic.copy_from(*tiles.get(&(x, y)).unwrap(), x * TILE_SIDE, y * TILE_SIDE)?;
-        }
+    for (x, y, pixel) in image.pixels() {
+        mosaic.copy_from(&**tiles.get(&pixel).unwrap(), x * TILE_SIDE, y * TILE_SIDE)?;
     }
-    mosaic.save("mosaic.png")?;
+    mosaic.save(output)?;
 
     Ok(())
 }
