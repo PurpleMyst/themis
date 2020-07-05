@@ -1,0 +1,8 @@
+/target/
+/images.py
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webm
+/.mypy_cache/

@@ -1,0 +1,14 @@
+[package]
+name = "themis"
+version = "1.0.0"
+authors = ["PurpleMyst <PurpleMyst@users.noreply.github.com>"]
+license = "GPL-3.0-only"
+edition = "2018"
+
+[dependencies]
+image = "0.23.6"
+anyhow = "1.0.31"
+rayon = "1.3.1"
+indicatif = { version = "0.15.0", features = ["rayon", "improved_unicode"] }
+noisy_float = "0.1.12"
+structopt = "0.3.15"
