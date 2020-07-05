@@ -91,6 +91,10 @@ struct Opt {
     /// The side length that the image to turn into to a mosaic will be resized to
     #[structopt(short, long, default_value = "128")]
     mosaic_size: u32,
+
+    /// Keep the image's aspect ratio
+    #[structopt(short, long)]
+    keep_aspect_ratio: bool,
 }
 
 fn main() -> Result<()> {
@@ -98,10 +102,16 @@ fn main() -> Result<()> {
         image,
         tiles_directory,
         mosaic_size,
+        keep_aspect_ratio,
     } = Opt::from_args();
 
     let possible_tiles = load_images(tiles_directory)?;
-    let image = image::open(image)?.thumbnail_exact(mosaic_size, mosaic_size);
+    let image = image::open(image)?;
+    let image = if keep_aspect_ratio {
+        image.thumbnail(mosaic_size, mosaic_size)
+    } else {
+        image.thumbnail_exact(mosaic_size, mosaic_size)
+    };
 
     // For every unique pixel in the image, find its most appropiate tile
     let unique_pixels = image.pixels().collect::<HashSet<_>>();
