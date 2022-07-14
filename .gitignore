@@ -4,5 +4,8 @@
 *.jpg
 *.jpeg
 *.gif
+*.heic
+*.mp4
 *.webm
 /.mypy_cache/
+tiles/

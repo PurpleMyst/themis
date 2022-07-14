@@ -1,16 +1,13 @@
-use std::collections::*;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use image::{DynamicImage, GenericImage, GenericImageView, Pixel, Rgba};
-use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressIterator, ProgressStyle};
 use noisy_float::prelude::*;
 use rayon::prelude::*;
 use structopt::StructOpt;
-
-/// How big each square tile of the mosaic will be (in pixels)
-const TILE_SIDE: u32 = 26;
 
 /// Calculate the average color of a given image by averaging all of its pixels together (including alpha)
 fn average_color(image: &DynamicImage) -> Rgba<u8> {
@@ -43,25 +40,29 @@ fn distance(pixel1: Rgba<u8>, pixel2: Rgba<u8>) -> R64 {
 }
 
 /// Choose the image in the given tileset whose average color is closest to the given pixel
-fn pick_image_for_pixel(pixel: Rgba<u8>, possible_tiles: &[DynamicImage]) -> Option<&DynamicImage> {
+fn pick_image_for_pixel(
+    pixel: Rgba<u8>,
+    possible_tiles: &[(DynamicImage, Rgba<u8>)],
+) -> Option<&DynamicImage> {
     possible_tiles
         .into_par_iter()
-        .min_by_key(|&img| distance(average_color(img), pixel))
+        .min_by_key(|(_img, avg)| distance(*avg, pixel))
+        .map(|(img, _avg)| img)
 }
 
 /// Load the tiles from the given directory
-fn load_images<P: AsRef<Path>>(dir: P) -> Result<Vec<DynamicImage>> {
+fn load_images<P: AsRef<Path>>(dir: P, tile_side: u32) -> Result<Vec<(DynamicImage, Rgba<u8>)>> {
     let dir = fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
     let len = dir.len();
     Ok(dir
         .into_par_iter()
         .progress_with(make_pbar("images loaded", len as _))
         .filter_map(|entry| {
-            Some(
-                image::open(entry.path())
-                    .ok()?
-                    .thumbnail_exact(TILE_SIDE, TILE_SIDE),
-            )
+            let img = image::open(entry.path())
+                .ok()?
+                .thumbnail_exact(tile_side, tile_side);
+            let avg = average_color(&img);
+            Some((img, avg))
         })
         .collect::<Vec<_>>())
 }
@@ -92,9 +93,13 @@ struct Opt {
     #[structopt(short, long, parse(from_os_str), default_value = "mosaic.png")]
     output: PathBuf,
 
-    /// The side length that the image to turn into to a mosaic will be resized to
+    /// The side length that the target image'll be resized to.
     #[structopt(short, long, default_value = "128")]
     mosaic_size: u32,
+
+    /// The side length of each tile.
+    #[structopt(short, long, default_value = "26")]
+    tile_size: u32,
 
     /// Keep the image's aspect ratio
     #[structopt(short, long)]
@@ -106,11 +111,12 @@ fn main() -> Result<()> {
         image,
         tiles_directory,
         mosaic_size,
+        tile_size,
         keep_aspect_ratio,
         output,
     } = Opt::from_args();
 
-    let possible_tiles = load_images(tiles_directory)?;
+    let possible_tiles = load_images(tiles_directory, tile_size)?;
     let image = image::open(image)?;
     let image = if keep_aspect_ratio {
         image.thumbnail(mosaic_size, mosaic_size)
@@ -134,9 +140,12 @@ fn main() -> Result<()> {
         .collect::<HashMap<_, _>>();
 
     // Apply the mapping previously calculated and save the mosaic
-    let mut mosaic = DynamicImage::new_rgba8(image.width() * TILE_SIDE, image.height() * TILE_SIDE);
-    for (x, y, pixel) in image.pixels() {
-        mosaic.copy_from(&**tiles.get(&pixel).unwrap(), x * TILE_SIDE, y * TILE_SIDE)?;
+    let mut mosaic = DynamicImage::new_rgba8(image.width() * tile_size, image.height() * tile_size);
+    for (x, y, pixel) in image.pixels().progress_with(make_pbar(
+        "actual pixels",
+        u64::from(image.width() * image.height()),
+    )) {
+        mosaic.copy_from(&**tiles.get(&pixel).unwrap(), x * tile_size, y * tile_size)?;
     }
     mosaic.save(output)?;
 
