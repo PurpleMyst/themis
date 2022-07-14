@@ -88,7 +88,7 @@ fn make_spinner(msg: &'static str, done_msg: &'static str) -> ProgressBar {
         ProgressStyle::default_bar()
             .template("{spinner:.yellow} {msg}")
             .progress_chars("##-")
-            .on_finish(ProgressFinish::WithMessage(done_msg)),
+            .on_finish(ProgressFinish::WithMessage(done_msg.into())),
     );
     bar.enable_steady_tick(100);
     bar
